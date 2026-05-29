@@ -226,8 +226,39 @@
   .wx-sub { color: var(--muted); font-size: 15px; }
   .wx-sub span { color: var(--ink); font-weight: 600; }
 
-  .wx-forecast {
+  .wx-label {
     margin-top: 26px;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .wx-hourly {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+  }
+  .wx-hour {
+    flex: 0 0 auto;
+    width: 72px;
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 6px;
+    text-align: center;
+  }
+  .wx-hour .hh { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .wx-hour .ic { font-size: 26px; margin: 6px 0; }
+  .wx-hour .ht { font-weight: 600; }
+  .wx-hour .pop { font-size: 11px; color: var(--sage-deep); margin-top: 2px; min-height: 1em; }
+
+  .wx-forecast {
+    margin-top: 12px;
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 12px;
@@ -431,6 +462,7 @@
     const url = "https://api.open-meteo.com/v1/forecast?latitude=" + WX.latitude +
       "&longitude=" + WX.longitude +
       "&current=temperature_2m,apparent_temperature,weather_code,relative_humidity_2m,wind_speed_10m" +
+      "&hourly=temperature_2m,weather_code,precipitation_probability" +
       "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
       "&temperature_unit=" + WX.unit +
       "&wind_speed_unit=" + (WX.unit === "celsius" ? "kmh" : "mph") +
@@ -453,6 +485,35 @@
           '<div class="lo">' + Math.round(day.temperature_2m_min[i]) + '&deg;</div></div>';
       }
 
+      // ----- Hourly: next 12 hours, starting at the current hour -----
+      function hourLabel(iso, first) {
+        if (first) return "Now";
+        let hr = parseInt(iso.slice(11, 13), 10);     // "YYYY-MM-DDTHH:MM"
+        const ap = hr >= 12 ? "PM" : "AM";
+        hr = hr % 12; if (hr === 0) hr = 12;
+        return hr + " " + ap;
+      }
+      let hourly = "";
+      const hr = d.hourly;
+      if (hr && hr.time && hr.time.length) {
+        // current.time is in the forecast's timezone, e.g. "2026-05-29T14:30"
+        const nowHour = (c.time || "").slice(0, 13);   // "YYYY-MM-DDTHH"
+        let start = 0;
+        for (let i = 0; i < hr.time.length; i++) {
+          if (hr.time[i].slice(0, 13) >= nowHour) { start = i; break; }
+        }
+        const end = Math.min(start + 12, hr.time.length);
+        for (let i = start; i < end; i++) {
+          const hwc = wxCode(hr.weather_code[i]);
+          const pop = hr.precipitation_probability ? hr.precipitation_probability[i] : null;
+          hourly +=
+            '<div class="wx-hour"><div class="hh">' + hourLabel(hr.time[i], i === start) + '</div>' +
+            '<div class="ic">' + hwc[1] + '</div>' +
+            '<div class="ht">' + Math.round(hr.temperature_2m[i]) + '&deg;</div>' +
+            '<div class="pop">' + (pop != null && pop > 0 ? '💧' + pop + '%' : '&nbsp;') + '</div></div>';
+        }
+      }
+
       card.innerHTML =
         '<div class="wx-now">' +
           '<div class="wx-icon">' + wc[1] + '</div>' +
@@ -465,6 +526,9 @@
               'Wind <span>' + Math.round(c.wind_speed_10m) + ' ' + windUnit + '</span></div>' +
           '</div>' +
         '</div>' +
+        '<div class="wx-label">Next 12 hours</div>' +
+        '<div class="wx-hourly">' + hourly + '</div>' +
+        '<div class="wx-label">5-day forecast</div>' +
         '<div class="wx-forecast">' + forecast + '</div>';
       wxLoaded = true;
     }).catch(function () {
